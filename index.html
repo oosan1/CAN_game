@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CAN Controller Simulator — CANコントローラの気持ちになれるゲーム</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+JP:wght@400;500;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="top-bar">
+      <div class="brand" id="btn-home" role="button" tabindex="0" title="タイトルに戻る">
+        <span class="brand-badge">CAN 2.0A</span>
+        <div>
+          <h1>BE THE CAN CONTROLLER</h1>
+          <p class="subtitle">標準フォーマット 生ビット列 ↔ データフレーム &amp; 調停体験</p>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button class="btn btn-ghost" id="btn-guide">📖 CAN仕様ガイド: OFF</button>
+        <button class="btn btn-ghost hidden" id="btn-back-menu">🏠 メニューへ</button>
+      </div>
+    </header>
+
+    <!-- Inline / Docked CAN Specification Reference Panel (Toggleable while playing!) -->
+    <aside class="card guide-drawer hidden" id="guide-drawer">
+      <div class="card-title">
+        <span>📖 CAN 2.0A 標準データフレーム仕様（プレイ中も参照できます）</span>
+        <button class="btn btn-sm btn-ghost" id="btn-close-guide">隠す ✕</button>
+      </div>
+      <div class="guide-grid">
+        <section class="guide-section">
+          <h3>1. バスレベルと調停 (Arbitration)</h3>
+          <ul>
+            <li><strong>0 = ドミナント (Dominant / 優勢)</strong>、<strong>1 = リセッシブ (Recessive / 劣勢)</strong>。</li>
+            <li>複数ノードが同時送信すると <strong>Wired-AND</strong>（1つでも <code>0</code> ならバスは <code>0</code>）。</li>
+            <li>自分が <code>1</code> を出したのにバスが <code>0</code> なら<strong>調停負け</strong>！即座に送信停止（Back Off）して相手の <code>EOF + IFS</code> 完了を待ちます。</li>
+          </ul>
+        </section>
+        <section class="guide-section">
+          <h3>2. ビットスタッフィング (Bit Stuffing)</h3>
+          <ul>
+            <li><strong>適用範囲</strong>：<code>SOF</code> 〜 <code>CRC (15bit)</code> まで。（<code>CRC Delim</code> 以降はなし）</li>
+            <li>同じビットが <strong>5連続</strong>（<code>00000</code> / <code>11111</code>）したら、直後に <strong>反転ビット（スタッフビット）を1つ挿入</strong>。</li>
+            <li>挿入したスタッフビット自体も、次の連続カウントの1ビット目として数えます。</li>
+          </ul>
+        </section>
+      </div>
+      <div class="field-legend" style="margin-top:0.5rem;">
+        <span><b style="color:#38bdf8">SOF</b> (1bit): <code>0</code></span>
+        <span><b style="color:#a78bfa">ID</b> (11bit): 標準識別子 (MSB先頭)</span>
+        <span><b style="color:#818cf8">RTR</b> (1bit): <code>0</code> (データ)</span>
+        <span><b style="color:#60a5fa">IDE</b> (1bit): <code>0</code> (標準)</span>
+        <span><b style="color:#64748b">r0</b> (1bit): <code>0</code> (予約)</span>
+        <span><b style="color:#34d399">DLC</b> (4bit): データ長 (2byte=<code>0010</code>)</span>
+        <span><b style="color:#fbbf24">Data</b> (16bit): 2バイト</span>
+        <span><b style="color:#f472b6">CRC</b> (15bit): CRC-15</span>
+        <span><b style="color:#fb7185">CRC Delim</b> (1bit): <code>1</code></span>
+        <span><b style="color:#2dd4bf">ACK Slot</b> (1bit): 送<code>1</code>/受<code>0</code></span>
+        <span><b style="color:#14b8a6">ACK Delim</b> (1bit): <code>1</code></span>
+        <span><b style="color:#94a3b8">EOF</b> (7bit): <code>1111111</code></span>
+      </div>
+    </aside>
+
+    <main id="main-content">
+      <!-- Views rendered dynamically by src/app.js -->
+    </main>
+  </div>
+
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
