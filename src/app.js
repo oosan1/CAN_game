@@ -3,10 +3,12 @@ import {
   computeCrc15,
   decodeStandardFrame,
   intToBits,
+  stuffBits,
   toHex,
 } from './can-protocol.js';
 import { generateMission } from './missions.js';
 import { CanBusSimulator } from './bus-sim.js';
+import { mountCrcLongDivisionPad } from './crc-pad.js';
 import { formatTimeMs, loadRecords, saveBestTime } from './storage.js';
 
 const TIME_ATTACK_FRAMES = 1;
@@ -135,7 +137,7 @@ function renderMenu() {
         </div>
 
         <div class="option-group">
-          <div class="option-label">2. 難易度 (Easy / Normal / Hard)</div>
+          <div class="option-label">2. 難易度 (Easy / Normal / Hard / Extreme)</div>
           <button class="choice-btn ${appState.difficulty === 'easy' ? 'active' : ''}" data-opt="difficulty" data-val="easy">
             <strong>🌱 イージー (チュートリアル)</strong>
             <span>手順ガイド・自動入力ボタン・クリックデスタッフ付き</span>
@@ -147,6 +149,10 @@ function renderMenu() {
           <button class="choice-btn ${appState.difficulty === 'hard' ? 'active' : ''}" data-opt="difficulty" data-val="hard">
             <strong>🔥 ハードモード (Hard)</strong>
             <span>ハイライト・ガイドなし！生ビット列のみ＋メモ欄</span>
+          </button>
+          <button class="choice-btn ${appState.difficulty === 'extreme' ? 'active' : ''}" data-opt="difficulty" data-val="extreme">
+            <strong>💀 超ハード (Extreme)</strong>
+            <span>CRC-15計算機なし！筆算メモ欄でCRCも手計算する職人モード</span>
           </button>
         </div>
 
@@ -180,8 +186,10 @@ function renderMenu() {
       <div class="records-grid">
         <div class="record-item"><span>TX 通常</span><span class="record-time">${formatTimeMs(records['tx_normal'])}</span></div>
         <div class="record-item"><span>TX ハード</span><span class="record-time">${formatTimeMs(records['tx_hard'])}</span></div>
+        <div class="record-item"><span>TX 超ハード</span><span class="record-time">${formatTimeMs(records['tx_extreme'])}</span></div>
         <div class="record-item"><span>RX 通常</span><span class="record-time">${formatTimeMs(records['rx_normal'])}</span></div>
         <div class="record-item"><span>RX ハード</span><span class="record-time">${formatTimeMs(records['rx_hard'])}</span></div>
+        <div class="record-item"><span>RX 超ハード</span><span class="record-time">${formatTimeMs(records['rx_extreme'])}</span></div>
       </div>
     </div>
   `;
@@ -227,7 +235,7 @@ function loadNextMission() {
     resumeTimer();
   }
 
-  if (appState.mode === 'tx' && appState.difficulty !== 'hard') {
+  if (appState.mode === 'tx' && (appState.difficulty === 'easy' || appState.difficulty === 'normal')) {
     initTxSlots(appState.mission);
   }
   renderPlayScreen();
@@ -275,7 +283,9 @@ function renderHudHtml() {
       ? '🌱 イージー'
       : appState.difficulty === 'normal'
       ? '🟢 通常'
-      : '🔥 ハード';
+      : appState.difficulty === 'hard'
+      ? '🔥 ハード'
+      : '💀 超ハード';
   const progressLabel =
     appState.playStyle === 'time_attack'
       ? `Frame ${appState.frameIndex + 1} / ${TIME_ATTACK_FRAMES}`
@@ -319,8 +329,8 @@ function renderPlayScreen() {
   }
 
   if (appState.mode === 'tx') {
-    if (appState.difficulty === 'hard') {
-      renderTxHard();
+    if (appState.difficulty === 'hard' || appState.difficulty === 'extreme') {
+      renderTxHard(appState.difficulty === 'extreme');
     } else {
       renderTxSlotMode(appState.difficulty === 'easy');
     }
@@ -329,8 +339,10 @@ function renderPlayScreen() {
       renderRxEasy();
     } else if (appState.difficulty === 'normal') {
       renderRxNormal();
-    } else {
+    } else if (appState.difficulty === 'hard') {
       renderRxHard();
+    } else {
+      renderRxExtreme();
     }
   }
 }
@@ -543,15 +555,15 @@ function renderTxSlotMode(isEasy) {
   });
 }
 
-/* ==================== TX HARD ==================== */
-function renderTxHard() {
+/* ==================== TX HARD & EXTREME ==================== */
+function renderTxHard(isExtreme = false) {
   const m = appState.mission;
   mainEl.innerHTML = `
     ${renderHudHtml()}
     <div class="card">
       <div class="card-title">
-        <span>🔥 ハードモード送信リクエスト: ${m.ecu} (${m.label})</span>
-        <span class="pill pill-warn">DATA 2Byte固定 (DLC=2) / ガイドなし</span>
+        <span>${isExtreme ? '💀 超ハードモード' : '🔥 ハードモード'}送信リクエスト: ${m.ecu} (${m.label})</span>
+        <span class="pill pill-warn">DATA 2Byte固定 (DLC=2) / ${isExtreme ? 'CRC計算機なし' : 'ガイドなし'}</span>
       </div>
       <div class="mission-specs">
         <div class="spec-box">
@@ -574,17 +586,23 @@ function renderTxHard() {
       <textarea class="scratchpad" id="hard-scratchpad" placeholder="2進数への変換や、5連続ビットのチェック用メモとして自由に使えます..."></textarea>
     </div>
 
-    <div class="card">
-      <div class="card-title">🧮 ハードウェア CRC-15 計算機</div>
-      <p style="font-size:0.83rem; color:var(--text-muted); margin-top:0;">
-        SOF(0) 〜 Data(2Byte) までの<strong>デスタッフ済みビット列</strong>を入力すると、15bit の CRC を計算します。
-      </p>
-      <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
-        <input type="text" class="hex-input" id="crc-calc-input" style="flex:1; min-width:220px; text-transform:none;" placeholder="例: 0 00110100011 0 0 0 0010 ..." />
-        <button class="btn btn-primary" id="btn-calc-crc">CRC-15 計算</button>
+    ${
+      isExtreme
+        ? `<div id="crc-long-div-pad"></div>`
+        : `
+      <div class="card">
+        <div class="card-title">🧮 ハードウェア CRC-15 計算機</div>
+        <p style="font-size:0.83rem; color:var(--text-muted); margin-top:0;">
+          SOF(0) 〜 Data(2Byte) までの<strong>デスタッフ済みビット列</strong>を入力すると、15bit の CRC を計算します。
+        </p>
+        <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+          <input type="text" class="hex-input" id="crc-calc-input" style="flex:1; min-width:220px; text-transform:none;" placeholder="例: 0 00110100011 0 0 0 0010 ..." />
+          <button class="btn btn-primary" id="btn-calc-crc">CRC-15 計算</button>
+        </div>
+        <div id="crc-calc-out" style="margin-top:0.5rem;"></div>
       </div>
-      <div id="crc-calc-out" style="margin-top:0.5rem;"></div>
-    </div>
+    `
+    }
 
     <div class="card">
       <div class="card-title">Step 1: 生ビット列出力 (SOF〜EOF / スタッフビット込み)</div>
@@ -598,7 +616,11 @@ function renderTxHard() {
 
   bindHudEvents();
 
-  document.getElementById('btn-calc-crc').addEventListener('click', () => {
+  if (isExtreme) {
+    mountCrcLongDivisionPad(document.getElementById('crc-long-div-pad'));
+  }
+
+  document.getElementById('btn-calc-crc')?.addEventListener('click', () => {
     const raw = document.getElementById('crc-calc-input').value.replace(/\s+/g, '');
     const out = document.getElementById('crc-calc-out');
     if (!/^[01]+$/.test(raw)) {
@@ -687,7 +709,7 @@ function renderBusPhase() {
           ? '<span class="pill pill-warn">ARBITRATION (調停中)</span>'
           : '<span class="pill pill-accent">STREAMING</span>';
 
-      const showCompRow = appState.difficulty !== 'hard';
+      const showCompRow = appState.difficulty !== 'hard' && appState.difficulty !== 'extreme';
       const arbMonitorHtml =
         simState.arbHistory && simState.arbHistory.length > 0
           ? `
@@ -1071,7 +1093,70 @@ function renderRxHard() {
   });
 }
 
-function validateRxAnswer(mission, feedbackElId) {
+/* ==================== RX EXTREME (CRC HAND CALCULATION) ==================== */
+function renderRxExtreme() {
+  const m = appState.mission;
+  const preCrcStuffed = stuffBits(m.encoded.preCrcBits).stuffedBits.join('');
+
+  mainEl.innerHTML = `
+    ${renderHudHtml()}
+    <div class="card">
+      <div class="card-title">
+        <span>💀 超ハードモード受信: 生ビット列 (CRC-15はマスク中！)</span>
+        <button class="btn btn-sm btn-ghost" id="btn-copy-to-pad">📝 メモ欄にコピー</button>
+      </div>
+      <p style="font-size:0.83rem; color:var(--text-muted); margin-top:0;">
+        <code>SOF〜Data</code>（スタッフ込み）の後ろの <strong>CRC-15 (15bit)</strong> が隠されています。
+        デスタッフして <code>ID</code> と <code>Data</code> を解読し、さらに <code>SOF〜Data</code>（デスタッフ済35bit）から <strong>CRC-15を手計算</strong> して一致させてください！
+      </p>
+      <div class="raw-stream-box">
+        <span>${preCrcStuffed}</span><span style="color:var(--warning); font-weight:800;">???????????????</span><span style="color:var(--text-muted);">1111111111</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📝 デスタッフ用メモ欄 (Scratchpad)</div>
+      <textarea class="scratchpad" id="rx-extreme-pad" placeholder="スタッフビットに印をつけたり、SOF / ID(11bit) / RTR / IDE / r0 / DLC(4bit) / Data(16bit) に区切ってみましょう..."></textarea>
+    </div>
+
+    <div id="crc-long-div-pad"></div>
+
+    <div class="card">
+      <div class="card-title">受信レジスタ入力 &amp; CRC-15 検証</div>
+      <div class="input-row">
+        <div class="field-input-group">
+          <label for="rx-id-input">ID (16進数 / 例: 1A3)</label>
+          <input type="text" class="hex-input" id="rx-id-input" placeholder="1A3" maxlength="5" style="width:120px" />
+        </div>
+        <div class="field-input-group" style="flex:1; min-width:180px;">
+          <label for="rx-data-input">Data Bytes (2バイト 16進数スペース区切り)</label>
+          <input type="text" class="hex-input" id="rx-data-input" placeholder="5A 0F" />
+        </div>
+        <div class="field-input-group" style="flex:1; min-width:210px;">
+          <label for="rx-crc-input">CRC-15 (15bit 2進数)</label>
+          <input type="text" class="hex-input" id="rx-crc-input" style="text-transform:none;" placeholder="15bit (例: 101011001110001)" maxlength="20" />
+        </div>
+        <button class="btn btn-success" id="btn-rx-submit">✅ CRC検証 &amp; ACK (0) 送信</button>
+      </div>
+      <div id="rx-extreme-fb"></div>
+    </div>
+  `;
+
+  bindHudEvents();
+  mountCrcLongDivisionPad(document.getElementById('crc-long-div-pad'));
+
+  document.getElementById('btn-copy-to-pad').addEventListener('click', () => {
+    const pad = document.getElementById('rx-extreme-pad');
+    pad.value = preCrcStuffed;
+    pad.focus();
+  });
+
+  document.getElementById('btn-rx-submit').addEventListener('click', () => {
+    validateRxAnswer(m, 'rx-extreme-fb', true);
+  });
+}
+
+function validateRxAnswer(mission, feedbackElId, requireCrc = false) {
   const idStr = document.getElementById('rx-id-input').value.trim().replace(/^0x/i, '');
   const dataStr = document.getElementById('rx-data-input').value.trim();
   const fb = document.getElementById(feedbackElId);
@@ -1093,6 +1178,21 @@ function validateRxAnswer(mission, feedbackElId) {
     addPenalty(5);
     fb.innerHTML = `<div class="feedback error">Dataバイト列が一致しません！（2バイトを16進数スペース区切りで入力）</div>`;
     return;
+  }
+
+  if (requireCrc) {
+    const crcInput = document.getElementById('rx-crc-input').value.replace(/\s+/g, '');
+    const expectedCrcBin = intToBits(mission.encoded.crc, 15).join('');
+    if (!/^[01]{15}$/.test(crcInput)) {
+      addPenalty(5);
+      fb.innerHTML = `<div class="feedback warning">IDとDataは正解です！CRC-15は15桁の2進数（0と1）で入力してください。</div>`;
+      return;
+    }
+    if (crcInput !== expectedCrcBin) {
+      addPenalty(5);
+      fb.innerHTML = `<div class="feedback error">IDとDataは正解ですが、CRC-15が一致しません！生成多項式 <code>1100010110011001</code> での筆算を見直してください。</div>`;
+      return;
+    }
   }
 
   handleMissionCleared(false);

@@ -41,11 +41,11 @@
           </ul>
         </section>
         <section class="guide-section">
-          <h3>2. ビットスタッフィング (Bit Stuffing)</h3>
+          <h3>2. ビットスタッフィング &amp; CRC-15</h3>
           <ul>
-            <li><strong>適用範囲</strong>：<code>SOF</code> 〜 <code>CRC (15bit)</code> まで。（<code>CRC Delim</code> 以降はなし）</li>
-            <li>同じビットが <strong>5連続</strong>（<code>00000</code> / <code>11111</code>）したら、直後に <strong>反転ビット（スタッフビット）を1つ挿入</strong>。</li>
-            <li>挿入したスタッフビット自体も、次の連続カウントの1ビット目として数えます。</li>
+            <li><strong>スタッフ範囲</strong>：<code>SOF</code> 〜 <code>CRC (15bit)</code> まで。（<code>CRC Delim</code> 以降はなし）</li>
+            <li>同じビットが <strong>5連続</strong>（<code>00000</code> / <code>11111</code>）したら、直後に <strong>反転ビット（スタッフビット）を1つ挿入</strong>（挿入ビットもカウント対象）。</li>
+            <li><strong>CRC-15多項式</strong>：<code>1100010110011001</code>（16bit）。<code>SOF〜Data</code>（デスタッフ済35bit）の末尾に <code>0</code> を15個足してXOR除算した15bitの余り。</li>
           </ul>
         </section>
       </div>

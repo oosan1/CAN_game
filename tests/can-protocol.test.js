@@ -62,7 +62,7 @@ test('computeCrc15 detects single-bit corruption', () => {
 
 test('generateMission produces valid decodable 2-byte frames for all modes', () => {
   for (const mode of ['tx', 'rx']) {
-    for (const diff of ['easy', 'normal', 'hard']) {
+    for (const diff of ['easy', 'normal', 'hard', 'extreme']) {
       for (let i = 0; i < 10; i++) {
         const m = generateMission(mode, diff);
         assert.equal(m.dlc, 2);
